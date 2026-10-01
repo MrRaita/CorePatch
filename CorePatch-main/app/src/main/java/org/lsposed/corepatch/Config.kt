@@ -14,6 +14,8 @@ object Config {
     const val BYPASS_SHARED_USER = "bypass_shared_user"
     const val DISABLE_VERIFICATION_AGENT = "disable_verification_agent"
     const val BYPASS_BLOCK = "bypass_block"
+    const val BYPASS_DUPLICATE_PERMISSION = "bypass_duplicate_permission"
+    const val BYPASS_DUPLICATE_PROVIDER = "bypass_duplicate_provider"
 
     private val allConfig = arrayOf(
         BYPASS_DOWNGRADE,
@@ -23,7 +25,9 @@ object Config {
         USE_PREVIOUS_SIGNATURES,
         ALLOW_HIDDEN_APIS_FOR_SYSTEM_APPS,
         BYPASS_SHARED_USER,
-        BYPASS_BLOCK
+        BYPASS_BLOCK,
+        BYPASS_DUPLICATE_PERMISSION,
+        BYPASS_DUPLICATE_PROVIDER
     )
 
     fun printAllConfig() {
@@ -70,6 +74,14 @@ object Config {
 
     fun isBypassBlockEnabled(): Boolean {
         return prefs.getBoolean(BYPASS_BLOCK, false)
+    }
+
+    fun isBypassDuplicatePermissionEnabled(): Boolean {
+        return prefs.getBoolean(BYPASS_DUPLICATE_PERMISSION, false)
+    }
+
+    fun isBypassDuplicateProviderEnabled(): Boolean {
+        return prefs.getBoolean(BYPASS_DUPLICATE_PROVIDER, false)
     }
 
     fun getConfig(key: String): Boolean {

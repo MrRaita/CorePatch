@@ -92,6 +92,18 @@ class MainActivity : Activity() {
         val bypassBlock = SwitchData(
             getString(R.string.bypass_block), getString(R.string.bypass_block_summary), Config.BYPASS_BLOCK
         )
+        val bypassDuplicatePermission = SwitchData(
+            getString(R.string.bypass_duplicate_permission),
+            getString(R.string.bypass_duplicate_permission_summary),
+            Config.BYPASS_DUPLICATE_PERMISSION,
+            getString(R.string.bypass_duplicate_permission_warning)
+        )
+        val bypassDuplicateProvider = SwitchData(
+            getString(R.string.bypass_duplicate_provider),
+            getString(R.string.bypass_duplicate_provider_summary),
+            Config.BYPASS_DUPLICATE_PROVIDER,
+            getString(R.string.bypass_duplicate_provider_warning)
+        )
 
         val dataSet = arrayListOf(
             bypassDowngrade,
@@ -103,7 +115,9 @@ class MainActivity : Activity() {
             allowHiddenApisForSystemApps,
             bypassSharedUser,
             disableVerificationAgent,
-            bypassBlock
+            bypassBlock,
+            bypassDuplicatePermission,
+            bypassDuplicateProvider
         )
 
         val adapter = MultiTypeListAdapter(dataSet)

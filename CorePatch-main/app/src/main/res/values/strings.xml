@@ -25,5 +25,11 @@
     <string name="disable_verification_agent_summary">For example, Google Play Protect.</string>
     <string name="bypass_block">Bypass installation blocklist</string>
     <string name="bypass_block_summary">Bypass blocklists on devices such as Nothing Phone.</string>
+    <string name="bypass_duplicate_permission">Bypass duplicate permission declarations</string>
+    <string name="bypass_duplicate_permission_summary">Allow packages with a different signature (e.g. a cloned app) to redefine a custom permission already owned by another package.</string>
+    <string name="bypass_duplicate_permission_warning">Any installed app may redefine a permission already declared by another app, which can let it receive broadcasts or access components intended only for the original owner. Enable only when necessary.</string>
+    <string name="bypass_duplicate_provider">Bypass duplicate provider declarations</string>
+    <string name="bypass_duplicate_provider_summary">Allow packages with a different signature (e.g. a cloned app) to declare a content provider authority already used by another package.</string>
+    <string name="bypass_duplicate_provider_warning">Any installed app may claim a content provider authority already used by another app, which can let it intercept content:// requests meant for the original owner. Enable only when necessary.</string>
     <string name="hide_launcher_icon">Hide launcher icon</string>
 </resources>

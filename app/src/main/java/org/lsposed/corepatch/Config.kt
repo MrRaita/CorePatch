@@ -16,6 +16,7 @@ object Config {
     const val BYPASS_BLOCK = "bypass_block"
     const val BYPASS_DUPLICATE_PERMISSION = "bypass_duplicate_permission"
     const val BYPASS_DUPLICATE_PROVIDER = "bypass_duplicate_provider"
+    const val BYPASS_DUPLICATE_PROVIDER_INCLUDE_SENSITIVE = "bypass_duplicate_provider_include_sensitive"
 
     private val allConfig = arrayOf(
         BYPASS_DOWNGRADE,
@@ -27,7 +28,8 @@ object Config {
         BYPASS_SHARED_USER,
         BYPASS_BLOCK,
         BYPASS_DUPLICATE_PERMISSION,
-        BYPASS_DUPLICATE_PROVIDER
+        BYPASS_DUPLICATE_PROVIDER,
+        BYPASS_DUPLICATE_PROVIDER_INCLUDE_SENSITIVE
     )
 
     fun printAllConfig() {
@@ -82,6 +84,10 @@ object Config {
 
     fun isBypassDuplicateProviderEnabled(): Boolean {
         return prefs.getBoolean(BYPASS_DUPLICATE_PROVIDER, false)
+    }
+
+    fun isBypassDuplicateProviderIncludeSensitiveEnabled(): Boolean {
+        return prefs.getBoolean(BYPASS_DUPLICATE_PROVIDER_INCLUDE_SENSITIVE, false)
     }
 
     fun getConfig(key: String): Boolean {

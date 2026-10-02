@@ -102,6 +102,7 @@ object ComponentResolverHook : BaseHook() {
             }
 
             var attempts = 0
+            var lastAuthoritySeen: String? = null
             while (thrown != null && isConflictingProviderException(thrown!!) && attempts < MAX_RENAME_ATTEMPTS) {
                 attempts++
                 val conflictingAuthority = extractConflictingAuthority(thrown!!)
@@ -109,6 +110,16 @@ object ComponentResolverHook : BaseHook() {
                     log("[$name] could not parse conflicting authority from: ${thrown?.message}")
                     break
                 }
+
+                // Guard against an exclude/rename that silently didn't take effect (e.g. an
+                // unmodifiable provider list on this ROM): if we see the exact same authority
+                // conflict twice in a row, stop trying and just suppress so we don't spin.
+                if (conflictingAuthority == lastAuthoritySeen) {
+                    log("[$name] '$conflictingAuthority' still conflicting after handling it; giving up and suppressing")
+                    thrown = null
+                    break
+                }
+                lastAuthoritySeen = conflictingAuthority
 
                 val provider = findProviderOwning(pkg, conflictingAuthority)
                 if (provider == null) {
@@ -119,18 +130,28 @@ object ComponentResolverHook : BaseHook() {
 
                 val sensitive = isSensitiveProvider(provider)
                 if (sensitive && !Config.isBypassDuplicateProviderIncludeSensitiveEnabled()) {
-                    log("[$name] '$conflictingAuthority' belongs to a sensitive provider (${providerClassName(provider)}); suppressing without renaming")
-                    thrown = null
-                    break
+                    // Don't touch this one's authority, but don't just give up either -- doing so
+                    // would abandon validation of every OTHER provider declared after this one in
+                    // the manifest (the real check aborts at the first conflict it hits), which is
+                    // exactly what silently broke providers like AndroidContextProvider before.
+                    // Instead, exclude this single provider from the package for this install so
+                    // the real check can keep going and fix up everything that comes after it.
+                    if (excludeProviderFromPackage(pkg, provider)) {
+                        log("[$name] '$conflictingAuthority' belongs to a sensitive provider (${providerClassName(provider)}); excluding it from this install and continuing")
+                    } else {
+                        log("[$name] '$conflictingAuthority' is sensitive and could not be excluded on this ROM; suppressing without renaming")
+                        thrown = null
+                        break
+                    }
+                } else {
+                    val packageName = getPackageName(pkg)
+                    if (packageName == null || !renameAuthority(provider, conflictingAuthority, packageName)) {
+                        log("[$name] failed to rename authority '$conflictingAuthority', suppressing as-is")
+                        thrown = null
+                        break
+                    }
+                    log("[$name] renamed conflicting authority '$conflictingAuthority' for package $packageName")
                 }
-
-                val packageName = getPackageName(pkg)
-                if (packageName == null || !renameAuthority(provider, conflictingAuthority, packageName)) {
-                    log("[$name] failed to rename authority '$conflictingAuthority', suppressing as-is")
-                    thrown = null
-                    break
-                }
-                log("[$name] renamed conflicting authority '$conflictingAuthority' for package $packageName (sensitive=$sensitive)")
 
                 thrown = try {
                     invoker.invoke(thisObject, pkg)
@@ -197,6 +218,30 @@ object ComponentResolverHook : BaseHook() {
         (m?.invoke(pkg) as? List<Any>) ?: emptyList()
     } catch (_: Throwable) {
         emptyList()
+    }
+
+    /**
+     * Removes [provider] from [pkg]'s own provider list so a retried assertProvidersNotDefined()
+     * call no longer sees (and doesn't throw on) it, letting validation continue to whatever is
+     * declared after it. Only works if the live list returned by getProviders() is actually the
+     * mutable backing list (not a defensive copy or an unmodifiable wrapper); returns false if we
+     * can't remove it, so the caller can fall back to the old plain-suppress behavior instead.
+     */
+    private fun excludeProviderFromPackage(pkg: Any, provider: Any): Boolean {
+        val list = try {
+            val m = pkg.javaClass.methods.firstOrNull { it.name == "getProviders" && it.parameterCount == 0 }
+            m?.invoke(pkg)
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            val mutable = list as? MutableList<Any> ?: return false
+            mutable.remove(provider)
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun authorityField(provider: Any): Field? =

@@ -3,6 +3,11 @@
     <string name="module_description">Package manager service modifications</string>
     <string name="xposed_service_unavailable">Unable to connect to Xposed service</string>
     <string name="xposed_service_unavailable_summary">Make sure the Xposed framework is running and this module is enabled.</string>
+    <string name="module_active">Module active</string>
+    <string name="module_active_summary">Hooks loaded successfully.</string>
+    <string name="section_signature_and_verification">Signature &amp; Verification</string>
+    <string name="section_system_and_shared_user">System &amp; Shared User</string>
+    <string name="section_duplicate_declarations">Duplicate Declarations</string>
     <string name="bypass_downgrade">Bypass downgrade</string>
     <string name="bypass_verification">Bypass verification</string>
     <string name="bypass_digest">Bypass digest</string>

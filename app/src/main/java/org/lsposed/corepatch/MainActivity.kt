@@ -101,14 +101,7 @@ class MainActivity : Activity() {
         val bypassDuplicateProvider = SwitchData(
             getString(R.string.bypass_duplicate_provider),
             getString(R.string.bypass_duplicate_provider_summary),
-            Config.BYPASS_DUPLICATE_PROVIDER,
-            getString(R.string.bypass_duplicate_provider_warning)
-        )
-        val bypassDuplicateProviderIncludeSensitive = SwitchData(
-            getString(R.string.bypass_duplicate_provider_include_sensitive),
-            getString(R.string.bypass_duplicate_provider_include_sensitive_summary),
-            Config.BYPASS_DUPLICATE_PROVIDER_INCLUDE_SENSITIVE,
-            getString(R.string.bypass_duplicate_provider_include_sensitive_warning)
+            Config.BYPASS_DUPLICATE_PROVIDER
         )
 
         val dataSet = arrayListOf(
@@ -123,8 +116,7 @@ class MainActivity : Activity() {
             disableVerificationAgent,
             bypassBlock,
             bypassDuplicatePermission,
-            bypassDuplicateProvider,
-            bypassDuplicateProviderIncludeSensitive
+            bypassDuplicateProvider
         )
 
         val adapter = MultiTypeListAdapter(dataSet)

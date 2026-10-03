@@ -29,10 +29,6 @@
     <string name="bypass_duplicate_permission_summary">Allow packages with a different signature (e.g. a cloned app) to redefine a custom permission already owned by another package.</string>
     <string name="bypass_duplicate_permission_warning">Any installed app may redefine a permission already declared by another app, which can let it receive broadcasts or access components intended only for the original owner. Enable only when necessary.</string>
     <string name="bypass_duplicate_provider">Bypass duplicate provider declarations</string>
-    <string name="bypass_duplicate_provider_summary">Allow packages with a different signature (e.g. a cloned app) to declare a content provider authority already used by another package.</string>
-    <string name="bypass_duplicate_provider_warning">Any installed app may claim a content provider authority already used by another app, which can let it intercept content:// requests meant for the original owner. Enable only when necessary.</string>
-    <string name="bypass_duplicate_provider_include_sensitive">Also rename sensitive providers (e.g. FileProvider)</string>
-    <string name="bypass_duplicate_provider_include_sensitive_summary">When a duplicate authority belongs to a provider like FileProvider, whose authority is usually hardcoded elsewhere in the app\'s own code, rename it too instead of leaving it alone.</string>
-    <string name="bypass_duplicate_provider_include_sensitive_warning">FileProvider-style authorities are often referenced directly in app code (e.g. to share files). Renaming them lets installation succeed, but any such code path that still points at the old authority may silently fail or reach the wrong app. Only enable this if you understand the tradeoff.</string>
+    <string name="bypass_duplicate_provider_summary">Allow reinstalling/updating an app whose signature no longer matches its previous install (e.g. an unsigned or debug build) even though its own content provider authorities appear \"already used\".</string>
     <string name="hide_launcher_icon">Hide launcher icon</string>
 </resources>

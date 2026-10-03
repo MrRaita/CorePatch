@@ -11,56 +11,38 @@ import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 
 /**
- * Fixes INSTALL_FAILED_CONFLICTING_PROVIDER, the <provider> authority counterpart of the
- * duplicate-permission check handled in [InstallPackageHelperHook]. A package that declares a
- * <provider android:authorities="..."> already owned by another installed package (e.g. a
- * cloned/re-signed copy of an app that never had its authorities re-templated with its own
- * applicationId) is rejected by the platform during scanning.
+ * Provider-side counterpart to the signature-mismatch handling InstallPackageHelperHook already
+ * does for permissions (USE_PREVIOUS_SIGNATURES). Its only job: when reinstalling/updating a
+ * package whose signature no longer matches its previous install (typical for an unsigned or
+ * debug build rebuilt on every deploy), the platform treats its own, already-declared <provider>
+ * authorities as "owned by someone else" and throws INSTALL_FAILED_CONFLICTING_PROVIDER. This
+ * hook recognizes that specific case -- the conflicting authority's current owner is this SAME
+ * package, by name -- and suppresses it so the reinstall proceeds.
  *
- * ComponentResolver#assertProvidersNotDefined(AndroidPackage) is a void method that either
- * returns normally or throws a PackageManagerException(INSTALL_FAILED_CONFLICTING_PROVIDER, ...)
- * naming exactly one conflicting authority. Rather than only swallowing that exception (which
- * leaves the authority registered to whichever package already owned it -- the new package's own
- * copy of that provider is never actually reachable, breaking anything that relies on it, e.g. a
- * library that gets its Context from its own ContentProvider#onCreate()), we instead:
+ * This intentionally does NOT handle a genuinely different package (e.g. a cloned app with a
+ * different applicationId) colliding with someone else's authority. That case is a real conflict
+ * and is left to fail exactly as stock Android would; fix it by giving the clone unique
+ * authorities in its own manifest instead.
  *
- *  1. Let the real check run.
- *  2. On conflict, check who the exception says already owns the authority. If it's this SAME
- *     package (by name) -- a reinstall/update of this exact app whose signature no longer matches
- *     its previous install, e.g. an unsigned/debug build rebuilt on every deploy -- there is
- *     nothing to rename; we just suppress and move on, since renaming here would pile a new
- *     "cp_" prefix onto an already-correct authority on every single update.
- *  3. Otherwise (a genuinely different package, e.g. a clone with a different applicationId),
- *     find which of the installing package's own <provider> declarations owns the clashing
- *     authority and rewrite just that authority to a value derived from the package's own
- *     (unique) package name, so it no longer collides with anyone.
- *  4. Re-run the real check (via the ORIGIN invoker, bypassing our own hook to avoid recursion)
- *     to see if any other authority also conflicts, repeating until it passes or we hit a
- *     provider we're not supposed to touch.
- *
- * A handful of providers (FileProvider and friends) have their authority hardcoded into the
- * app's own compiled code (e.g. FileProvider.getUriForFile(...)), so silently renaming them would
- * leave that call pointing at the wrong (original) app instead of crashing -- a different,
- * quieter kind of broken. Those are only renamed when BYPASS_DUPLICATE_PROVIDER_INCLUDE_SENSITIVE
- * is on; otherwise we fall back to plain suppression for that one authority, same as before.
- *
- * The exact class moved from com.android.server.pm.ComponentResolver (pre Android 12) to
- * com.android.server.pm.resolution.ComponentResolver in later AOSP refactors; both are probed.
+ * ComponentResolver#assertProvidersNotDefined(AndroidPackage) validates every <provider> authority
+ * the package declares in one pass and throws on the FIRST conflict it finds, without checking the
+ * rest. An app can easily have more than one provider that collides with its own previous install
+ * (e.g. this one has eight), so a single suppress-and-stop would only ever clear the first and
+ * leave every later one unregistered -- exactly the silent breakage this project spent a while
+ * chasing down before. To handle all of them, we temporarily pull each self-owned conflicting
+ * provider out of the package's own list (so the real check can get past it to whatever's next),
+ * retry via the ORIGIN invoker, and -- once there's nothing left to resolve -- put every one of
+ * them straight back before returning, so the normal registration step that runs after this check
+ * still sees the complete, unmodified provider list.
  */
 object ComponentResolverHook : BaseHook() {
     override val name = "ComponentResolverHook"
 
     // android.content.pm.PackageManager.INSTALL_FAILED_CONFLICTING_PROVIDER
     private const val INSTALL_FAILED_CONFLICTING_PROVIDER = -13
-    private const val MAX_RENAME_ATTEMPTS = 32
-
-    // Component class names containing any of these are assumed to have their authority
-    // hardcoded somewhere in app code (FileProvider.getUriForFile, DocumentsProvider clients,
-    // etc.) rather than only being self-initializing library plumbing.
-    private val SENSITIVE_CLASS_NAME_MARKERS = listOf("FileProvider", "DocumentsProvider")
+    private const val MAX_ATTEMPTS = 32
 
     private val authorityFieldCache = HashMap<Class<*>, Field?>()
-    private val nameFieldCache = HashMap<Class<*>, Field?>()
 
     // "Can't install because provider name <authority> (in package <pkg>) is already used by <owner>"
     private val AUTHORITY_REGEX = Regex("""provider name (\S+)""")
@@ -88,7 +70,7 @@ object ComponentResolverHook : BaseHook() {
                 return
             }
 
-        // Lets us call the *real* implementation again after renaming an authority, without
+        // Lets us call the *real* implementation again after pulling a provider out, without
         // re-entering this very hook (which invoking the hooked Method object directly would do).
         val invoker = getOriginInvoker(assertProvidersNotDefinedMethod)
 
@@ -100,81 +82,39 @@ object ComponentResolverHook : BaseHook() {
 
             val pkg = callback.args.getOrNull(0)
             val thisObject = callback.thisObject
-
             if (pkg == null || thisObject == null || invoker == null) {
-                // Can't do the smarter fix on this ROM -- fall back to plain suppression so we
-                // at least behave like before rather than leaving the install blocked.
-                callback.throwable = null
+                // Can't safely retry on this ROM -- leave the exception as-is rather than guess.
                 return@hookAfter
             }
 
+            val installingPackageName = getPackageName(pkg)
+            if (installingPackageName == null) return@hookAfter
+
+            // Providers we've temporarily pulled out of pkg's own list to get the real check past
+            // them; always restored before this hook returns, success or not.
+            val setAside = mutableListOf<Any>()
             var attempts = 0
-            var lastAuthoritySeen: String? = null
-            while (thrown != null && isConflictingProviderException(thrown!!) && attempts < MAX_RENAME_ATTEMPTS) {
+
+            while (thrown != null && isConflictingProviderException(thrown!!) && attempts < MAX_ATTEMPTS) {
                 attempts++
-                val conflictingAuthority = extractConflictingAuthority(thrown!!)
-                if (conflictingAuthority == null) {
-                    log("[$name] could not parse conflicting authority from: ${thrown?.message}")
-                    break
-                }
 
-                // Guard against an exclude/rename that silently didn't take effect (e.g. an
-                // unmodifiable provider list on this ROM): if we see the exact same authority
-                // conflict twice in a row, stop trying and just suppress so we don't spin.
-                if (conflictingAuthority == lastAuthoritySeen) {
-                    log("[$name] '$conflictingAuthority' still conflicting after handling it; giving up and suppressing")
-                    thrown = null
-                    break
-                }
-                lastAuthoritySeen = conflictingAuthority
-
-                // If the authority is already owned by THIS SAME package name, we're not looking
-                // at a clone/duplicate at all -- we're reinstalling/updating this exact app, just
-                // with a signature that no longer matches its previous install (typical for an
-                // unsigned or debug build rebuilt on every deploy). There is nothing to rename:
-                // the package already owns this authority by name, the only problem is the
-                // signature check, so just let the install proceed as-is. Renaming here would be
-                // actively harmful -- it would pile a new "cp_" prefix onto an already-correct
-                // authority on every single reinstall.
                 val ownerPackageName = extractOwnerPackageName(thrown!!)
-                val installingPackageName = getPackageName(pkg)
-                if (ownerPackageName != null && installingPackageName != null && ownerPackageName == installingPackageName) {
-                    log("[$name] '$conflictingAuthority' already belongs to this same package ($installingPackageName); this is a reinstall/update with a signature mismatch, not a clone -- suppressing without renaming")
-                    thrown = null
+                if (ownerPackageName == null || ownerPackageName != installingPackageName) {
+                    // Not our case -- a genuinely different package already owns this authority.
+                    // Leave it to fail like stock Android; we only handle reinstalling ourselves.
+                    log("[$name] authority conflict is with a different package ($ownerPackageName); not touching it")
                     break
                 }
 
-                val provider = findProviderOwning(pkg, conflictingAuthority)
-                if (provider == null) {
-                    log("[$name] could not find a <provider> in this package owning authority '$conflictingAuthority', suppressing as-is")
-                    thrown = null
+                val conflictingAuthority = extractConflictingAuthority(thrown!!)
+                val provider = conflictingAuthority?.let { findProviderOwning(pkg, it) }
+                val list = getMutableProviders(pkg)
+                if (provider == null || list == null || !list.remove(provider)) {
+                    log("[$name] could not isolate the self-conflicting provider on this ROM, leaving install as-is")
                     break
                 }
-
-                val sensitive = isSensitiveProvider(provider)
-                if (sensitive && !Config.isBypassDuplicateProviderIncludeSensitiveEnabled()) {
-                    // Don't touch this one's authority, but don't just give up either -- doing so
-                    // would abandon validation of every OTHER provider declared after this one in
-                    // the manifest (the real check aborts at the first conflict it hits), which is
-                    // exactly what silently broke providers like AndroidContextProvider before.
-                    // Instead, exclude this single provider from the package for this install so
-                    // the real check can keep going and fix up everything that comes after it.
-                    if (excludeProviderFromPackage(pkg, provider)) {
-                        log("[$name] '$conflictingAuthority' belongs to a sensitive provider (${providerClassName(provider)}); excluding it from this install and continuing")
-                    } else {
-                        log("[$name] '$conflictingAuthority' is sensitive and could not be excluded on this ROM; suppressing without renaming")
-                        thrown = null
-                        break
-                    }
-                } else {
-                    val packageName = getPackageName(pkg)
-                    if (packageName == null || !renameAuthority(provider, conflictingAuthority, packageName)) {
-                        log("[$name] failed to rename authority '$conflictingAuthority', suppressing as-is")
-                        thrown = null
-                        break
-                    }
-                    log("[$name] renamed conflicting authority '$conflictingAuthority' for package $packageName")
-                }
+                setAside.add(provider)
+                log("[$name] '$conflictingAuthority' already belongs to this same package ($installingPackageName); signature mismatch on reinstall, letting it through")
 
                 thrown = try {
                     invoker.invoke(thisObject, pkg)
@@ -183,6 +123,14 @@ object ComponentResolverHook : BaseHook() {
                     t.targetException ?: t
                 } catch (t: Throwable) {
                     t
+                }
+            }
+
+            // Put everything back, whether we succeeded or gave up, so the registration step that
+            // runs after this check still sees pkg's full, unmodified set of providers.
+            getMutableProviders(pkg)?.let { list ->
+                for (provider in setAside) {
+                    if (!list.contains(provider)) list.add(provider)
                 }
             }
 
@@ -218,8 +166,7 @@ object ComponentResolverHook : BaseHook() {
         }
 
         // Fall back to matching the well-known AOSP message format if we couldn't read the
-        // error code field/method via reflection on this ROM:
-        // "Can't install because provider name <authority> (in package <pkg>) is already used by <owner>"
+        // error code field/method via reflection on this ROM.
         return t.message?.contains("provider name") == true
     }
 
@@ -244,36 +191,12 @@ object ComponentResolverHook : BaseHook() {
         null
     }
 
-    private fun getProviders(pkg: Any): List<Any> = try {
+    @Suppress("UNCHECKED_CAST")
+    private fun getMutableProviders(pkg: Any): MutableList<Any>? = try {
         val m = pkg.javaClass.methods.firstOrNull { it.name == "getProviders" && it.parameterCount == 0 }
-        @Suppress("UNCHECKED_CAST")
-        (m?.invoke(pkg) as? List<Any>) ?: emptyList()
+        m?.invoke(pkg) as? MutableList<Any>
     } catch (_: Throwable) {
-        emptyList()
-    }
-
-    /**
-     * Removes [provider] from [pkg]'s own provider list so a retried assertProvidersNotDefined()
-     * call no longer sees (and doesn't throw on) it, letting validation continue to whatever is
-     * declared after it. Only works if the live list returned by getProviders() is actually the
-     * mutable backing list (not a defensive copy or an unmodifiable wrapper); returns false if we
-     * can't remove it, so the caller can fall back to the old plain-suppress behavior instead.
-     */
-    private fun excludeProviderFromPackage(pkg: Any, provider: Any): Boolean {
-        val list = try {
-            val m = pkg.javaClass.methods.firstOrNull { it.name == "getProviders" && it.parameterCount == 0 }
-            m?.invoke(pkg)
-        } catch (_: Throwable) {
-            null
-        } ?: return false
-
-        return try {
-            @Suppress("UNCHECKED_CAST")
-            val mutable = list as? MutableList<Any> ?: return false
-            mutable.remove(provider)
-        } catch (_: Throwable) {
-            false
-        }
+        null
     }
 
     private fun authorityField(provider: Any): Field? =
@@ -287,33 +210,6 @@ object ComponentResolverHook : BaseHook() {
             found?.apply { isAccessible = true }
         }
 
-    private fun nameField(provider: Any): Field? =
-        nameFieldCache.getOrPut(provider.javaClass) {
-            var c: Class<*>? = provider.javaClass
-            var found: Field? = null
-            while (c != null && found == null) {
-                found = c.declaredFields.firstOrNull { it.type == String::class.java && it.name == "className" }
-                    ?: c.declaredFields.firstOrNull { it.type == String::class.java && it.name == "name" }
-                c = c.superclass
-            }
-            found?.apply { isAccessible = true }
-        }
-
-    private fun providerClassName(provider: Any): String? = try {
-        // Prefer the real getName()/getClassName() accessor; fall back to the raw field.
-        val m = provider.javaClass.methods.firstOrNull {
-            (it.name == "getClassName" || it.name == "getName") && it.parameterCount == 0 && it.returnType == String::class.java
-        }
-        (m?.invoke(provider) as? String) ?: nameField(provider)?.get(provider) as? String
-    } catch (_: Throwable) {
-        null
-    }
-
-    private fun isSensitiveProvider(provider: Any): Boolean {
-        val className = providerClassName(provider) ?: return true // unknown -> be conservative
-        return SENSITIVE_CLASS_NAME_MARKERS.any { className.contains(it) }
-    }
-
     private fun readAuthority(provider: Any): String? = try {
         val m = provider.javaClass.methods.firstOrNull { it.name == "getAuthority" && it.parameterCount == 0 }
         (m?.invoke(provider) as? String) ?: authorityField(provider)?.get(provider) as? String
@@ -322,32 +218,12 @@ object ComponentResolverHook : BaseHook() {
     }
 
     private fun findProviderOwning(pkg: Any, authorityToken: String): Any? {
-        for (provider in getProviders(pkg)) {
+        val list = getMutableProviders(pkg) ?: return null
+        for (provider in list) {
             val value = readAuthority(provider) ?: continue
-            if (splitAuthorities(value).contains(authorityToken)) return provider
+            val tokens = value.split(';', ',').map { it.trim() }
+            if (tokens.contains(authorityToken)) return provider
         }
         return null
-    }
-
-    private fun splitAuthorities(value: String): List<String> =
-        value.split(';', ',').map { it.trim() }.filter { it.isNotEmpty() }
-
-    private fun renameAuthority(provider: Any, oldToken: String, packageName: String): Boolean {
-        val field = authorityField(provider) ?: return false
-        val current = try {
-            field.get(provider) as? String ?: return false
-        } catch (_: Throwable) {
-            return false
-        }
-        val delimiter = if (current.contains(';')) ';' else ','
-        val newToken = "$packageName.cp_${oldToken.replace('.', '_').replace('-', '_')}"
-        val updated = current.split(delimiter)
-            .joinToString(delimiter.toString()) { if (it.trim() == oldToken) newToken else it }
-        return try {
-            field.set(provider, updated)
-            true
-        } catch (_: Throwable) {
-            false
-        }
     }
 }

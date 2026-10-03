@@ -28,11 +28,7 @@
     <string name="bypass_duplicate_permission_summary">Farklı imzaya sahip paketlerin (ör. klonlanmış bir uygulama), başka bir paketin zaten sahip olduğu özel bir izni yeniden tanımlamasına izin ver.</string>
     <string name="bypass_duplicate_permission_warning">Yüklü herhangi bir uygulama, başka bir uygulamanın zaten tanımladığı bir izni yeniden tanımlayabilir; bu da yalnızca orijinal sahibine ait olması gereken broadcast veya bileşenlere erişmesine yol açabilir. Sadece gerçekten gerektiğinde etkinleştirin.</string>
     <string name="bypass_duplicate_provider">Yinelenen provider tanımlarını atla</string>
-    <string name="bypass_duplicate_provider_summary">Farklı imzaya sahip paketlerin (ör. klonlanmış bir uygulama), başka bir paketin zaten kullandığı bir content provider authority\'sini tanımlamasına izin ver.</string>
-    <string name="bypass_duplicate_provider_warning">Yüklü herhangi bir uygulama, başka bir uygulamanın zaten kullandığı bir content provider authority\'sini üstlenebilir; bu da orijinal sahibine yönelik content:// isteklerini yakalayabilmesine yol açabilir. Sadece gerçekten gerektiğinde etkinleştirin.</string>
-    <string name="bypass_duplicate_provider_include_sensitive">Hassas provider\'ları da yeniden adlandır (ör. FileProvider)</string>
-    <string name="bypass_duplicate_provider_include_sensitive_summary">Yinelenen authority, authority\'si genelde uygulamanın kendi koduna gömülü olan FileProvider gibi bir provider\'a aitse, onu olduğu gibi bırakmak yerine onu da yeniden adlandır.</string>
-    <string name="bypass_duplicate_provider_include_sensitive_warning">FileProvider tarzı authority\'ler genelde uygulamanın kendi kodunda doğrudan kullanılır (ör. dosya paylaşımı için). Bunları yeniden adlandırmak kurulumun geçmesini sağlar, ama hâlâ eski authority\'yi kullanan kod yolları sessizce başarısız olabilir ya da yanlış uygulamaya ulaşabilir. Bunu sadece bu riski anlıyorsan etkinleştir.</string>
+    <string name="bypass_duplicate_provider_summary">İmzası önceki kurulumla artık eşleşmeyen bir uygulamayı (ör. imzasız/debug build) güncellerken, kendi content provider authority\'lerinin \"zaten kullanımda\" görünmesine rağmen kurulumun devam etmesine izin ver.</string>
     <string name="module_description">Paket Yöneticisi Hizmeti değişikliği</string>
     <string name="hide_launcher_icon">Başlatıcı simgesini gizle</string>
 </resources>

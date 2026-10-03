@@ -1,9 +1,0 @@
-<resources>
-    <color name="switch_track_on">#F2402A</color>
-    <color name="switch_track_off">#D6D6D6</color>
-    <color name="switch_thumb">#1A1A1A</color>
-    <color name="banner_background">#EDEDED</color>
-    <color name="banner_title">#111111</color>
-    <color name="banner_subtitle">#6B6B6B</color>
-    <color name="section_header">#6B6B6B</color>
-</resources>

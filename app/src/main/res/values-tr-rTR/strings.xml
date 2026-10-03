@@ -2,11 +2,6 @@
     <string name="app_name">Çekirdek Yaması N</string>
     <string name="xposed_service_unavailable">Xposed hizmetine bağlanılamıyor</string>
     <string name="xposed_service_unavailable_summary">Xposed altyapısının çalıştığından ve bu modülün etkinleştirildiğinden emin olun.</string>
-    <string name="module_active">Modül etkin</string>
-    <string name="module_active_summary">Hook\'lar başarıyla yüklendi.</string>
-    <string name="section_signature_and_verification">İmza ve Doğrulama</string>
-    <string name="section_system_and_shared_user">Sistem ve Paylaşılan Kullanıcı</string>
-    <string name="section_duplicate_declarations">Yinelenen Tanımlar</string>
     <string name="bypass_downgrade">Sürüm düşürmeye izin ver</string>
     <string name="bypass_downgrade_summary">Uygulamaların sürüm düşürmesine izin ver.</string>
     <string name="bypass_verification">Özet doğrulamayı devre dışı bırak</string>

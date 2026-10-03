@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -17,7 +16,6 @@ import org.lsposed.corepatch.App.Companion.mService
 import org.lsposed.corepatch.App.Companion.reloadListener
 import org.lsposed.corepatch.adapter.MultiTypeListAdapter
 import org.lsposed.corepatch.data.SwitchData
-import org.lsposed.corepatch.ui.dp
 
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -113,20 +111,17 @@ class MainActivity : Activity() {
             getString(R.string.bypass_duplicate_provider_include_sensitive_warning)
         )
 
-        val dataSet = arrayListOf<Any>(
-            getString(R.string.section_signature_and_verification),
+        val dataSet = arrayListOf(
             bypassDowngrade,
             bypassVerification,
             bypassResourceArscRestrictions,
             bypassDigest,
             bypassExactSignatureMatch,
             usePreviousSignatures,
-            disableVerificationAgent,
-            getString(R.string.section_system_and_shared_user),
             allowHiddenApisForSystemApps,
             bypassSharedUser,
+            disableVerificationAgent,
             bypassBlock,
-            getString(R.string.section_duplicate_declarations),
             bypassDuplicatePermission,
             bypassDuplicateProvider,
             bypassDuplicateProviderIncludeSensitive
@@ -135,41 +130,9 @@ class MainActivity : Activity() {
         val adapter = MultiTypeListAdapter(dataSet)
 
         val listView = ListView(this)
-        // addHeaderView must be called before setAdapter.
-        listView.addHeaderView(createStatusBanner(), null, false)
         listView.adapter = adapter
         listView.fitsSystemWindows = true
         setContentView(listView)
-    }
-
-    /**
-     * Rounded status card shown above the toggle list, e.g. "Modül etkin / Hook'lar başarıyla
-     * yüklendi.". This code path only runs once we already know the Xposed service is reachable
-     * (see the check at the top of [showContent]), so there's no separate "inactive" state to
-     * render here -- reaching this point already means the module is active.
-     */
-    private fun createStatusBanner(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.shape_banner_background)
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                setMargins(20.dp, 20.dp, 20.dp, 12.dp)
-            }
-            setPadding(20.dp, 18.dp, 20.dp, 18.dp)
-
-            addView(TextView(this@MainActivity).apply {
-                text = getString(R.string.module_active)
-                setTextColor(getColor(R.color.banner_title))
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            })
-            addView(TextView(this@MainActivity).apply {
-                text = getString(R.string.module_active_summary)
-                setTextColor(getColor(R.color.banner_subtitle))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setPadding(0, 6.dp, 0, 0)
-            })
-        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

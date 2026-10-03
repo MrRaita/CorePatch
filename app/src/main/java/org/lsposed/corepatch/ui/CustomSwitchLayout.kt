@@ -5,28 +5,22 @@ import android.util.TypedValue
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Switch
 import android.widget.TextView
-import org.lsposed.corepatch.R
 
 class CustomSwitchLayout(context: Context) : CustomViewGroup(context) {
 
     val titleView = TextView(context).apply {
         setTextAppearance(android.R.style.TextAppearance_Medium)
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         layoutParams = MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-            topMargin = 20.dp
-            leftMargin = 20.dp
+            topMargin = 8.dp
+            leftMargin = 16.dp
             rightMargin = 16.dp
         }
         this@CustomSwitchLayout.addView(this)
     }
     val subtitleView = TextView(context).apply {
-        setTextColor(context.getColor(R.color.section_header))
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
         layoutParams = MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-            topMargin = 2.dp
-            leftMargin = 20.dp
-            bottomMargin = 20.dp
+            leftMargin = 16.dp
+            bottomMargin = 8.dp
             rightMargin = 16.dp
         }
         this@CustomSwitchLayout.addView(this)
@@ -34,17 +28,8 @@ class CustomSwitchLayout(context: Context) : CustomViewGroup(context) {
     val switchView = Switch(context).apply {
         layoutParams = MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
             leftMargin = 8.dp
-            rightMargin = 20.dp
+            rightMargin = 8.dp
         }
-        // Plain android.widget.Switch defaults to the old thin AOSP track/thumb look.
-        // Swap in pill-shaped, colored drawables for a more Material appearance without
-        // pulling in the AndroidX/Material Components dependency this project otherwise
-        // avoids. trackDrawable/thumbDrawable setters exist since API 23 (minSdk is 28).
-        trackDrawable = context.getDrawable(R.drawable.switch_track_selector)
-        thumbDrawable = context.getDrawable(R.drawable.switch_thumb)
-        // The stock Switch reserves extra horizontal space for its old text-on-track
-        // labels ("ON"/"OFF"); we don't use those, so trim it for a tighter, modern look.
-        showText = false
         this@CustomSwitchLayout.addView(this)
     }
 

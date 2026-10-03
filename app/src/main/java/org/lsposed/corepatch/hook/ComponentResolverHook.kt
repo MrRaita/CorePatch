@@ -25,10 +25,16 @@ import java.lang.reflect.InvocationTargetException
  * library that gets its Context from its own ContentProvider#onCreate()), we instead:
  *
  *  1. Let the real check run.
- *  2. On conflict, find which of the installing package's own <provider> declarations owns the
- *     clashing authority and rewrite just that authority to a value derived from the package's
- *     own (unique) package name, so it no longer collides with anyone.
- *  3. Re-run the real check (via the ORIGIN invoker, bypassing our own hook to avoid recursion)
+ *  2. On conflict, check who the exception says already owns the authority. If it's this SAME
+ *     package (by name) -- a reinstall/update of this exact app whose signature no longer matches
+ *     its previous install, e.g. an unsigned/debug build rebuilt on every deploy -- there is
+ *     nothing to rename; we just suppress and move on, since renaming here would pile a new
+ *     "cp_" prefix onto an already-correct authority on every single update.
+ *  3. Otherwise (a genuinely different package, e.g. a clone with a different applicationId),
+ *     find which of the installing package's own <provider> declarations owns the clashing
+ *     authority and rewrite just that authority to a value derived from the package's own
+ *     (unique) package name, so it no longer collides with anyone.
+ *  4. Re-run the real check (via the ORIGIN invoker, bypassing our own hook to avoid recursion)
  *     to see if any other authority also conflicts, repeating until it passes or we hit a
  *     provider we're not supposed to touch.
  *
@@ -57,7 +63,8 @@ object ComponentResolverHook : BaseHook() {
     private val nameFieldCache = HashMap<Class<*>, Field?>()
 
     // "Can't install because provider name <authority> (in package <pkg>) is already used by <owner>"
-    private val CONFLICT_MESSAGE_REGEX = Regex("""provider name (\S+)""")
+    private val AUTHORITY_REGEX = Regex("""provider name (\S+)""")
+    private val OWNER_REGEX = Regex("""already used by (\S+)""")
 
     @SuppressLint("PrivateApi")
     override fun hook() {
@@ -120,6 +127,22 @@ object ComponentResolverHook : BaseHook() {
                     break
                 }
                 lastAuthoritySeen = conflictingAuthority
+
+                // If the authority is already owned by THIS SAME package name, we're not looking
+                // at a clone/duplicate at all -- we're reinstalling/updating this exact app, just
+                // with a signature that no longer matches its previous install (typical for an
+                // unsigned or debug build rebuilt on every deploy). There is nothing to rename:
+                // the package already owns this authority by name, the only problem is the
+                // signature check, so just let the install proceed as-is. Renaming here would be
+                // actively harmful -- it would pile a new "cp_" prefix onto an already-correct
+                // authority on every single reinstall.
+                val ownerPackageName = extractOwnerPackageName(thrown!!)
+                val installingPackageName = getPackageName(pkg)
+                if (ownerPackageName != null && installingPackageName != null && ownerPackageName == installingPackageName) {
+                    log("[$name] '$conflictingAuthority' already belongs to this same package ($installingPackageName); this is a reinstall/update with a signature mismatch, not a clone -- suppressing without renaming")
+                    thrown = null
+                    break
+                }
 
                 val provider = findProviderOwning(pkg, conflictingAuthority)
                 if (provider == null) {
@@ -202,7 +225,16 @@ object ComponentResolverHook : BaseHook() {
 
     private fun extractConflictingAuthority(t: Throwable): String? {
         val msg = t.message ?: return null
-        return CONFLICT_MESSAGE_REGEX.find(msg)?.groupValues?.get(1)
+        return AUTHORITY_REGEX.find(msg)?.groupValues?.get(1)
+    }
+
+    // The package name that currently owns the conflicting authority, per the exception message.
+    // Trailing punctuation (a sentence-ending period, stray ')') is stripped defensively since we
+    // don't control the exact wording/formatting across AOSP versions.
+    private fun extractOwnerPackageName(t: Throwable): String? {
+        val msg = t.message ?: return null
+        val raw = OWNER_REGEX.find(msg)?.groupValues?.get(1) ?: return null
+        return raw.trimEnd('.', ')', ' ').ifEmpty { null }
     }
 
     private fun getPackageName(pkg: Any): String? = try {
